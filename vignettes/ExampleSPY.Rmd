@@ -1,0 +1,153 @@
+---
+title: "Using LeastFracDiff to analyse the stationarity of the S&P 500 stock market index."
+author: "Luis Damiano"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using LeastFracDiff to analyse the stationarity of the S&P 500 Index.}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, cache = TRUE)
+```
+
+`LeastFracDiff` provides minimal tools for finding an approximation to the least fractional difference order $d$ that transforms a time series into a stationary one, as suggested by de Prado (2018)^[de Prado, M. L. (2018). Advances in financial machine learning. John Wiley & Sons.]. As we typically work with log prices, we rely on `quantmod` to download data for our example.
+
+```{r}
+library(LeastFracDiff)
+suppressPackageStartupMessages(library(quantmod))
+
+penv <- new.env()
+getSymbols(
+  Symbols = c("SPY", "QQQ"),
+  src     = "yahoo",
+  from    = "1990-01-01", 
+  to      = "2018-06-30",
+  env     = penv
+)
+p    <- penv$SPY
+x    <- log(Cl(na.omit(p)))
+```
+
+We approximate the minimal fractional differentiation coefficient $d$ so that the p-value from the Augmented Dickey Fuller test is below an arbitrary threshold (say, $0.05$). The function `min_d` takes three arguments: the time series `x`, a function `fun` taking a time series and returning a p-value, and a `threshold`. The package includes a function `adf` relying on the package `tseries` for convenience.
+
+```{r}
+print(adf)
+```
+
+```{r}
+d   <- min_d(x, adf, 0.05)
+print(d)
+```
+
+A series can be transformed via the function `diff_series`, which in turns relies on the package `fracdiff`.
+
+```{r, fig.width = 7}
+dx  <- diff_series(x, d)
+plot(
+  cbind(
+    "Log Price" = x, 
+    "Differenced Log Price" = dx
+  ),
+  main       = colnames(x),
+  grid.col   = "white",
+  legend.loc = "right"
+)
+```
+
+Instead of keeping only the least $d$, we may explore the relationship between the order of fractional differentiation, some measures of stationarity, and a metric for loss of information with respect to the original series. The function `grid_d` takes the already discussed arguments `x` and `fun` to produce a grid for values of $d$ from `dFrom` to `dTo` increase by `dBy` each step.
+
+```{r}
+g   <- grid_d(x, adf, dFrom = 0, dTo = 1, dBy = 0.1)
+```
+
+```{r, results='asis'}
+knitr::kable(g)
+```
+
+```{r, fig.show='hold'}
+plot(g, ylab = "ADF p-value")
+abline(h = 0.05)
+
+matplot(
+  g[, 1], g[, -1], type = "l", ylab = "", xlab = "d",
+  col = 1:3, lty = 1, lwd = 1
+)
+legend(
+  x      = "topright",
+  legend = c("p-value", "Pearson", "Spearman"),
+  bty    = "n",
+  cex    = 0.7,
+  lty    = 1,
+  col    = 1:3
+)
+```
+
+We can also compute min $d$. The function `roll_min_d` takes three mandatory arguments: `x` a time series, `width` the number of observations per rolling window, and `by` the number of time steps between each window. Additionally, the user may pass other arguments for `min_d` or `zoo::rollapply`.
+
+For example, the following snippet minimizes $d$ so that the p-value of the ADF statistic is below a threshold of $0.05$. The minimization is run on a rolling window with approximately five years of daily close prices. Each run is separated by a month approximately.
+
+```{r}
+dRolling <- roll_min_d(x, fun = adf, threshold = 0.05, width = 5 * 252, by = 21)
+```
+
+```{r, fig.width = 7}
+plot(
+  na.omit(dRolling),
+  main       = sprintf(
+    "Auto d for %s (5ys daily obs per window - one window per month)", 
+    colnames(x)
+  ),
+  ylab       = "min d s.t. ADF p-value = 0.05",
+  grid.col   = "white",
+  legend.loc = "topleft"
+)
+```
+
+Compare the fractional differentiation order found using the entire time series $d^ = `r print(d)`$ versus the time-varying quantity observed for each window. We observe that min $d$ is approximately zero for the rolling window ending on March 2015, i.e. there was not enough evidence to reject the null hypothesis that log prices had a non-stationary distribution according to ADF.
+
+```{r, fig.width = 7}
+subx   <- last(x["/2015-04-01"], 5 * 252)
+plot(
+  subx,
+  main       = colnames(x),
+  grid.col   = "white",
+  legend.loc = "right"
+)
+
+print(tseries::adf.test(subx))
+```
+
+The code to expand this analysis to other assets is trivial:
+
+```{r}
+dMat <- do.call(
+  cbind,
+  lapply(penv, function(p) {
+    x    <- log(Cl(na.omit(p)))
+    as.numeric(roll_min_d(x, fun = adf, threshold = 0.05, width = 5 * 252, by = 21))
+  })
+)
+```
+
+```{r, fig.width = 7}
+matplot(
+  na.omit(dMat), type = "l", ylab = "d", xlab = "Time",
+  col = 1:2, lty = 1, lwd = 1
+)
+legend(
+  x      = "topright",
+  legend = colnames(dMat),
+  bty    = "n",
+  cex    = 0.7,
+  lty    = 1,
+  col    = 1:2
+)
+```
+
+## Final remarks
+
+* A more granular value for $d$ may be find at the cost of computational complexity by setting a smaller value for `dBy`.
+* P-values from other tests, or completely different metrics, may be used by changing the argument `fun`. For example, set `fun = kpss` to run the KPSS test.

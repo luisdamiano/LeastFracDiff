@@ -1,0 +1,27 @@
+Package: LeastFracDiff
+Type: Package
+Title: Grid Search for the Least Fractional Differenciation Order
+Version: 0.0.1
+Author: Luis Damiano <damiano.luis@gmail.com>
+Maintainer: Luis Damiano <damiano.luis@gmail.com>
+Description: Minimal tools for approximating the least fractional difference order that transforms a time series into a stationary one, as suggested by de Prado (2018).
+License: GPL (>=3)
+Copyright: (c) 2018
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 3.0.0)
+Imports:
+    fracdiff,
+    tseries,
+    xts,
+    zoo
+Suggests:
+    knitr,
+    quantmod,
+    rmarkdown,
+    roxygen2
+VignetteBuilder: knitr
+URL: https://github.com/luisdamiano/LeastFracDiff/
+BugReports: https://github.com/luisdamiano/LeastFracDiff/issues
+RoxygenNote: 6.0.1
